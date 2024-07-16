@@ -1,0 +1,10 @@
+
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR NOT NULL
+);
+
+CREATE TABLE logs (
+    id SERIAL PRIMARY KEY,
+    content VARCHAR NOT NULL
+);
