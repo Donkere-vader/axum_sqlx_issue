@@ -7,7 +7,7 @@ use axum::{
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
-use sqlx::{postgres::PgPoolOptions, query_as, Acquire, Pool, Postgres};
+use sqlx::{postgres::PgPoolOptions, query_as, PgConnection, Pool, Postgres};
 
 #[tokio::main]
 async fn main() {
@@ -38,7 +38,9 @@ async fn create_user(
     State(pool): State<Pool<Postgres>>,
     Json(payload): Json<CreateUser>,
 ) -> (StatusCode, Json<User>) {
-    let user = create_user_in_database(payload, &pool).await;
+    let mut transaction = pool.begin().await.unwrap();
+
+    let user = create_user_in_database(payload, &mut transaction).await;
 
     (StatusCode::CREATED, Json(user))
 }
@@ -59,21 +61,21 @@ struct CreateLogEntry {
 }
 
 struct LogEntry {
+    #[allow(dead_code)]
     id: i32,
+    #[allow(dead_code)]
     content: String,
 }
 
-async fn create_user_in_database<'a, A: Acquire<'a, Database = Postgres> + Send>(
+async fn create_user_in_database(
     user: CreateUser,
-    conn: A,
+    conn: &mut PgConnection,
 ) -> User {
-    let mut conn = conn.acquire().await.unwrap();
-
     create_log_entry_in_database(
         CreateLogEntry {
             content: "Creating new user".to_string(),
         },
-        &mut *conn,
+        conn,
     )
     .await;
 
@@ -82,23 +84,21 @@ async fn create_user_in_database<'a, A: Acquire<'a, Database = Postgres> + Send>
         "INSERT INTO users (name) VALUES ($1) RETURNING id, name",
         user.name
     )
-    .fetch_one(&mut *conn)
+    .fetch_one(conn)
     .await
     .unwrap()
 }
 
-async fn create_log_entry_in_database<'a, A: Acquire<'a, Database = Postgres> + Send>(
+async fn create_log_entry_in_database(
     entry: CreateLogEntry,
-    conn: A,
+    conn: &mut PgConnection,
 ) -> LogEntry {
-    let mut conn = conn.acquire().await.unwrap();
-
     query_as!(
         LogEntry,
         "INSERT INTO logs (content) VALUES ($1) RETURNING id, content",
         entry.content
     )
-    .fetch_one(&mut *conn)
+    .fetch_one(conn)
     .await
     .unwrap()
 }
